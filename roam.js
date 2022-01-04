@@ -74,7 +74,7 @@ function get_url(kind, args) {
     if (kind == 'esi_affiliations')
         return 'https://esi.evetech.net/v1/characters/affiliation/?datasource=tranquility'
     if (kind == 'zkill_batch')
-        return `https://zkillboard.com/api/${args.querryType}/${args.id}/pastSeconds/172800/no-items/page/${args.page}/`
+        return `https://zkillboard.com/api/${args.querryType}/${args.id}/pastSeconds/172800/page/${args.page}/`
     if (kind == 'esi_kill_data')
         return `https://esi.evetech.net/v1/killmails/${args.killmail_id}/${args.killmail_hash}/`
 }
