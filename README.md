@@ -1,3 +1,7 @@
+THIS VERSION OF EVEROAMREPORT IS NO LONGER MAINTAINED.
+
+PLEASE USE THE VERSION AT https://github.com/marnvermuldir/EveRoamReport / https://everoamreport.minin.io/
+
 # Roam Report
 
 A tool for generating reports for a fleet roam.
