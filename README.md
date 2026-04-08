@@ -1,21 +1,23 @@
-THIS VERSION OF EVEROAMREPORT IS NO LONGER MAINTAINED.
-
-PLEASE USE THE VERSION AT https://github.com/marnvermuldir/EveRoamReport / https://everoamreport.minin.io/
-
 # Roam Report
 
-A tool for generating reports for a fleet roam.
+A tool for generating after action reports for a fleet roam.
 
 # Usage
 
-Currently hosted here: https://thatcasualmatt.github.io/EveRoamReport
-
-THIS TOOL WORKS BEST IN EDGE OR FIREFOX. YOU MUST CLICK PROCESS FLEET LOG SEVERAL TIMES BEFORE A FINAL REPORT IS GENERATED!
+Currently hosted here: https://roamreport.unfinishedprojects.xyz/
 
 Input: A fleet chat log.
+Output: A discord formatted post of your triumphs and failures.
 
-The tool then generates a list of kills that those pilots participated in. You can then manually deselect kills you're not interested in.
+The tool generates a list of kills that the pilots found in the fleet chat log participated in. You can then manually deselect kills you're not interested in.
 
-Finally, generate an after action report template to be used in a phpBB forum.
+Finally, generate an after action report template to be used in a discord post.
 
-Designed to be used within EVE University forums. Very much WIP.
+# Support the project
+
+Use my referral link for 1 Million Free SP: https://www.eveonline.com/signup?invc=64198c20-7ae2-4344-9cb1-a6bdbb816bcf
+ISK or Plex donations can be sent to Arto Hagnar
+
+# AI Usage Disclaimer
+
+ClaudeAI was used to assist in updating this to work with current ESI and zKillboard API implementation as well us updating the look of the page.
