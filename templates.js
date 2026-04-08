@@ -29,11 +29,11 @@ let discord = {
     membersHeader: (count) => `\n### 👥 Fleet Members *(${count} in fleet chat)*`,
 
     member: (name, ships) => {
-        let line = `- ${name}`;
+        // -# renders as small subtext in Discord
         if (ships && ships.length > 0) {
-            line += ` — *${ships.join(", ")}*`;
+            return `-# ${name} — ${ships.join(", ")}`;
         }
-        return line;
+        return `-# ${name}`;
     },
 
     membersFooter: () => "",

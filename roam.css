@@ -17,9 +17,9 @@
     --red-dim:    rgba(214, 60, 60, 0.15);
     --green:      #3cd67a;
     --green-dim:  rgba(60, 214, 122, 0.15);
-    --text:       #c8cfe8;
-    --text-dim:   #5a6180;
-    --text-faint: #2e3550;
+    --text:       #e8ecf8;
+    --text-dim:   #8892b0;
+    --text-faint: #3a4060;
     --font-head:  'Orbitron', monospace;
     --font-mono:  'Share Tech Mono', monospace;
     --font-body:  'Inter', sans-serif;
@@ -141,7 +141,7 @@ a:hover { text-decoration: underline; }
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.25em;
-    color: var(--text-dim);
+    color: #6a7899;
 }
 
 .header-status {
@@ -151,7 +151,7 @@ a:hover { text-decoration: underline; }
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.15em;
-    color: var(--text-dim);
+    color: #6a7899;
     padding-bottom: 4px;
 }
 
@@ -249,13 +249,14 @@ a:hover { text-decoration: underline; }
 
 .notice {
     font-size: 12px;
-    color: var(--text-dim);
+    color: #9aa5c4;
     background: var(--panel-alt);
     border-left: 2px solid var(--border-lit);
     padding: 8px 12px;
     border-radius: 0 var(--radius) var(--radius) 0;
     margin-bottom: 16px;
     font-family: var(--font-mono);
+    line-height: 1.8;
 }
 
 /* ── Textarea inputs ────────────────────────────────────────── */
@@ -467,7 +468,7 @@ a:hover { text-decoration: underline; }
     font-family: var(--font-head);
     font-size: 9px;
     letter-spacing: 0.15em;
-    color: var(--text-dim);
+    color: #7a8aaa;
     white-space: nowrap;
     border-bottom: 1px solid var(--border);
 }
@@ -477,7 +478,7 @@ a:hover { text-decoration: underline; }
     padding: 6px 10px;
     border-bottom: 1px solid var(--text-faint);
     white-space: nowrap;
-    color: var(--text);
+    color: #d0d8f0;
 }
 
 .kill-display .kd a {

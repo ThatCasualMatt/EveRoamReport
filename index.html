@@ -57,12 +57,14 @@
                         </div>
                     </div>
                     <div class="notice">
-                        Paste from multiple logs to cover disconnects. Accuracy may vary if pilots changed corp after the fleet. Not optimised for NPSI fleets.
+                        Paste from multiple logs to cover disconnects.<br>
+                        Accuracy may vary if pilots changed corp after the fleet.<br>
+                        Not optimised for NPSI fleets.
                     </div>
                     <textarea class="input-fleet-text" name="names" placeholder="Drop or paste fleet chat log here…"></textarea>
                     <button class="advance-button" onclick="get_roam()">
                         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                        PROCESS FLEET LOG
+                        PROCESS FLEET CHAT LOG
                     </button>
                     <div class="loader" style="display: none;"></div>
                 </div>
@@ -79,7 +81,8 @@
                 </div>
                 <div class="card-body">
                     <div class="notice">
-                        Drag across rows to include or exclude kills. Check "New fight?" to add a timestamp separator before that engagement.
+                        Click a row to include or exclude the kill.<br>
+                        Check "New fight?" to add a timestamp separator before that engagement.
                     </div>
                     <div class="kill-display-wrapper">
                         <div class="kill-display" name="killdisplay">
@@ -105,12 +108,9 @@
                     <h2>GENERATE AAR</h2>
                 </div>
                 <div class="card-body">
-                    <div class="template-row">
-                        <label class="template-label" for="template-select">OUTPUT FORMAT</label>
-                        <select name="template" id="template-select" class="template-select">
-                            <option value="discord">Discord</option>
-                        </select>
-                    </div>
+                    <select name="template" id="template-select" style="display:none;">
+                        <option value="discord">Discord</option>
+                    </select>
                     <button class="advance-button" onclick="get_forum_post()">
                         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                         GENERATE AAR TEMPLATE
@@ -131,7 +131,8 @@
         </main>
 
         <footer class="site-footer">
-            Originally by Laser Skaron · Updated by Arto Hagnar · Eve-mail with questions
+            Originally by Laser Skaron · Updated by Arto Hagnar · Eve-mail with questions<br>
+            <a href="https://roamreport.unfinishedprojects.xyz" target="_blank">EveRoamReport</a>
         </footer>
 
     </div>
