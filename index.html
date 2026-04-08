@@ -1,55 +1,154 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="data.js"></script>
     <script src="templates.js"></script>
     <script src="roam.js"></script>
     <link rel="stylesheet" href="roam.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css">
-    <title>Roam Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <title>Roam Report // EVE Online</title>
 </head>
 <body>
 
+    <div class="stars"></div>
+    <div class="stars2"></div>
+
     <div class="page-container">
-        <h1>Roam Report.</h1>
-        
-        <h3 style="color:red; font-weight:bold">USAGE WARNINGS</h3>
-        <h4 style="color:red; font-weight:bold">This tool works best using EDGE or FIREFOX. Do not use CHROME.</h4>
-        <h4 style="color:red; font-weight:bold">Due to limitations from Zkillboard you will need to click 'Process Fleet Log' several times before a report is generated.</h4>
 
-        <h3>How it works?</h3>
-        <h4>1. Everyone in fleet types at some point in fleet chat.</h4>
-        <h4>2. Wait for kills to be updated on zKillboard. (up to 60 mins)</h4>
-        <h4>3. Drag and Drop <a href=https://wiki.eveuniversity.org/EVE_logs>chat log</a> here. (Chat log, NOT fleet log!)</h4>
-        <p>You can paste text from multiple chat logs to combine them (in case of disconnects during fleet). Data may be inaccurate if pilots changed corp since the fleet took place! This tool is not optimized for NPSI fleets!</p>
-
-        <textarea class="input-fleet-text" name="names" placeholder="Drop a chat log of a roam here..."></textarea>
-        <button class="advance-button" onclick="get_roam()"><i class="fa fa-chevron-down" aria-hidden="true"></i> Process fleet log <i class="fa fa-chevron-down" aria-hidden="true"></i></button>
-        <div class="loader" style="display: none;"></div>
-
-        <div class="step-two" style="display: none;">
-            <p>I think this is what happened with your roam, but I can't be sure. Drag over kills to include/exclude them from the AAR. Toggle fight starts to add separators with timestamps before those kills.</p>
-
-            <div class="adjust-aar">
-                <div class="kill-display" name="killdisplay">
-                    <div class="krh"><div class="kh">New fight?</div><div class="kh">Time</div><div class="kh">Kill/Loss</div><div class="kh">Ship (points)</div><div class="kh">Victim</div><div class="kh">Final Blow</div><div class="kh">Location</div><div class="kh">ISK</div></div>
+        <header class="site-header">
+            <div class="header-accent"></div>
+            <div class="header-inner">
+                <div class="logo-block">
+                    <span class="logo-pre">EVE ONLINE</span>
+                    <h1 class="logo">ROAM REPORT</h1>
+                    <span class="logo-sub">AFTER ACTION REPORT GENERATOR</span>
+                </div>
+                <div class="header-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">CONNECTED TO ZKILLBOARD &amp; ESI</span>
                 </div>
             </div>
+        </header>
 
-            <center>
-            <label class="template-label"> AAR Template: </label> <select name="template" class="template-select">
-                <option value="simple">Simple</option>
-                <option value="eUni">Eve Uni Forums (ORCON)</option>
-            </select>
-            </center>
+        <main>
 
-            <button class="advance-button" onclick="get_forum_post()"><i class="fa fa-chevron-down" aria-hidden="true"></i> Generate AAR template <i class="fa fa-chevron-down" aria-hidden="true"></i></button>
+            <!-- ── STEP 1: INPUT ───────────────────────────────────────────── -->
+            <section class="card" id="step-one">
+                <div class="card-header">
+                    <span class="card-step">01</span>
+                    <h2>IMPORT FLEET CHAT LOG</h2>
+                </div>
+                <div class="card-body">
+                    <div class="instructions">
+                        <div class="instruction-item">
+                            <span class="inst-num">1</span>
+                            <span>Everyone in fleet types at least once in fleet chat during the roam.</span>
+                        </div>
+                        <div class="instruction-item">
+                            <span class="inst-num">2</span>
+                            <span>Wait for kills to appear on zKillboard — this can take up to 60 minutes.</span>
+                        </div>
+                        <div class="instruction-item">
+                            <span class="inst-num">3</span>
+                            <span>Drag &amp; drop your <a href="https://wiki.eveuniversity.org/EVE_logs" target="_blank">fleet chat log</a> below, or paste its contents. <strong>Chat log only — not the fleet log.</strong></span>
+                        </div>
+                    </div>
+                    <div class="notice">
+                        Paste from multiple logs to cover disconnects. Accuracy may vary if pilots changed corp after the fleet. Not optimised for NPSI fleets.
+                    </div>
+                    <textarea class="input-fleet-text" name="names" placeholder="Drop or paste fleet chat log here…"></textarea>
+                    <button class="advance-button" onclick="get_roam()">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        PROCESS FLEET LOG
+                    </button>
+                    <div class="loader" style="display: none;"></div>
+                </div>
+            </section>
 
-            <textarea class="output-aar" name="output" placeholder="Output..."></textarea>
-        </div>
+            <!-- ── STEPS 2 & 3: hidden until processing completes ─────────── -->
+            <div class="step-two" style="display: none;">
 
-        <div><span class="credits">This tool was originally brought to you by Laser Skaron. Updated by Arto Hagnar. Eve-mail if you have any questions.</span></div>
+            <!-- ── STEP 2: REVIEW KILLS ──────────────────────────────────── -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="card-step">02</span>
+                    <h2>REVIEW KILLS &amp; LOSSES</h2>
+                </div>
+                <div class="card-body">
+                    <div class="notice">
+                        Drag across rows to include or exclude kills. Check "New fight?" to add a timestamp separator before that engagement.
+                    </div>
+                    <div class="kill-display-wrapper">
+                        <div class="kill-display" name="killdisplay">
+                            <div class="krh">
+                                <div class="kh">New fight?</div>
+                                <div class="kh">Time</div>
+                                <div class="kh">Kill/Loss</div>
+                                <div class="kh">Ship</div>
+                                <div class="kh">Victim</div>
+                                <div class="kh">Final Blow</div>
+                                <div class="kh">Location</div>
+                                <div class="kh">ISK</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── STEP 3: GENERATE ───────────────────────────────────────── -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="card-step">03</span>
+                    <h2>GENERATE AAR</h2>
+                </div>
+                <div class="card-body">
+                    <div class="template-row">
+                        <label class="template-label" for="template-select">OUTPUT FORMAT</label>
+                        <select name="template" id="template-select" class="template-select">
+                            <option value="discord">Discord</option>
+                        </select>
+                    </div>
+                    <button class="advance-button" onclick="get_forum_post()">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        GENERATE AAR TEMPLATE
+                    </button>
+                    <div class="output-label">
+                        <span>OUTPUT</span>
+                        <button class="copy-btn" onclick="copyOutput()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            COPY
+                        </button>
+                    </div>
+                    <textarea class="output-aar" name="output" placeholder="Generated AAR will appear here…" readonly></textarea>
+                </div>
+            </section>
+
+            </div><!-- /.step-two -->
+
+        </main>
+
+        <footer class="site-footer">
+            Originally by Laser Skaron · Updated by Arto Hagnar · Eve-mail with questions
+        </footer>
+
     </div>
+
+    <script>
+        function copyOutput() {
+            var out = document.getElementsByName("output")[0];
+            if (!out.value) return;
+            navigator.clipboard.writeText(out.value).then(() => {
+                var btn = document.querySelector(".copy-btn");
+                btn.textContent = "COPIED!";
+                setTimeout(() => {
+                    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> COPY';
+                }, 2000);
+            });
+        }
+    </script>
 
 </body>
 </html>

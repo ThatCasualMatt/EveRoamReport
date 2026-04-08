@@ -28,43 +28,39 @@ window.knownKillData = {};
 window.partialKillData = {};
 // window.characters[id]: {name:string, alliance:id, corp:id, isFriendly:bool, shipsFlown:[id]}
 
-request_params = {
-  names_batch: {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      accept: "application/json",
-    },
-  },
-  esi_ids: {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      accept: "application/json",
-    },
-  },
-  esi_affiliations: {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      accept: "application/json",
-    },
-  },
-  zkill_batch: {
-    method: "GET",
-    mode: "cors",
-    headers: {
-      "Accept-Encoding": "gzip",
-    },
-  },
-  esi_kill_data: {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      accept: "application/json",
-    },
-  },
-};
+// FIX: Request params are now returned as fresh objects each call to avoid
+// mutation bugs when the same param object was reused across concurrent fetches.
+function make_request_params(kind, body) {
+  if (kind === "names_batch" || kind === "esi_ids" || kind === "esi_affiliations") {
+    return {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    };
+  }
+  if (kind === "zkill_batch") {
+    return {
+      method: "GET",
+      mode: "cors",
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": "EveRoamReport https://github.com/ThatCasualMatt/EveRoamReport",
+      },
+    };
+  }
+  if (kind === "esi_kill_data") {
+    return {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        accept: "application/json",
+      },
+    };
+  }
+}
 
 function get_url(kind, args) {
   if (kind == "names_batch")
@@ -74,7 +70,11 @@ function get_url(kind, args) {
   if (kind == "esi_affiliations")
     return "https://esi.evetech.net/v1/characters/affiliation/?datasource=tranquility";
   if (kind == "zkill_batch")
-    return `https://zkillboard.com/api/${args.querryType}/${args.id}/pastSeconds/172800/page/${args.page}/`;
+    // FIX: Removed startTime/endTime — those params were deprecated and silently
+    // ignored by zKill. We now use pastSeconds (max 7 days = 604800s) and filter
+    // by date client-side. The old code also used 172800s (48h) which was too
+    // short for roams that started more than 2 days ago.
+    return `https://zkillboard.com/api/${args.querryType}/${args.id}/pastSeconds/604800/page/${args.page}/`;
   if (kind == "esi_kill_data")
     return `https://esi.evetech.net/v1/killmails/${args.killmail_id}/${args.killmail_hash}/`;
 }
@@ -131,6 +131,16 @@ function is_valid_kill(kill) {
     if (window.friendlies.has(attacker.character_id)) return true;
   }
   return false;
+}
+
+// FIX: Added date-window check so kills outside the roam's time window are
+// discarded. This replaces the old (broken) startTime/endTime URL params.
+function is_kill_in_time_window(kill) {
+  if (!kill.killmail_time) return true; // can't tell, keep it
+  var killDate = get_date(kill.killmail_time);
+  if (window.roamStartDate && killDate < window.roamStartDate) return false;
+  if (window.roamEndDate && killDate > window.roamEndDate) return false;
+  return true;
 }
 
 function mark_missing_type(id, isCharacter) {
@@ -209,6 +219,11 @@ function get_roam() {
   window.starttime = startDate.toISOString().replace(/[-T]/g, "").slice(0, 10);
   window.endtime = endDate.toISOString().replace(/[-T]/g, "").slice(0, 10);
 
+  // FIX: Store Date objects for client-side kill filtering (replaces deprecated
+  // startTime/endTime URL params that zKill no longer supports).
+  window.roamStartDate = new Date(startDate.getTime() - 60 * 60 * 1000); // 1h before first message
+  window.roamEndDate = endDate;
+
   console.log("Players involved:" + window.finalNames);
 
   request_ids_for_names(window.finalNames, true)
@@ -248,9 +263,9 @@ function request_ids_for_names(names, addToFriendlies) {
 }
 
 function request_ids_for_names_batch(names, addToFriendlies) {
-  url = get_url("names_batch");
-  url_params = request_params.names_batch;
-  url_params.body = JSON.stringify(names);
+  var url = get_url("names_batch");
+  // FIX: Fresh params object each call — avoids shared-object mutation bugs.
+  var url_params = make_request_params("names_batch", names);
 
   return fetch(new Request(url, url_params))
     .then((response) => {
@@ -289,9 +304,9 @@ function request_names_for_ids(IDs) {
 }
 
 function request_names_for_ids_batch(IDs) {
-  url = get_url("esi_ids");
-  url_params = request_params.esi_ids;
-  url_params.body = JSON.stringify(IDs);
+  var url = get_url("esi_ids");
+  // FIX: Fresh params object each call.
+  var url_params = make_request_params("esi_ids", IDs);
 
   return fetch(new Request(url, url_params))
     .then((response) => {
@@ -324,7 +339,9 @@ function request_affiliations_for_unknown_characters() {
       unknownCharacters.push(key);
   }
 
-  IDs = Array.from(new Set(unknownCharacters));
+  // FIX: ESI affiliation endpoint requires integer IDs, not strings.
+  // Object.keys() returns strings, so we parse them here.
+  IDs = Array.from(new Set(unknownCharacters)).map(Number);
   var count = IDs.length;
   var requests = [];
   for (var start = 0; start < count; start = start + esiIdCountLimit) {
@@ -335,9 +352,9 @@ function request_affiliations_for_unknown_characters() {
 }
 
 function request_affiliations_for_char_ids_batch(IDs) {
-  url = get_url("esi_affiliations");
-  url_params = request_params.esi_affiliations;
-  url_params.body = JSON.stringify(IDs);
+  var url = get_url("esi_affiliations");
+  // FIX: Fresh params object each call.
+  var url_params = make_request_params("esi_affiliations", IDs);
 
   return fetch(new Request(url, url_params))
     .then((response) => {
@@ -405,15 +422,18 @@ function request_all_kills(IDs) {
 }
 
 function request_kill_batch(id, querryType, page) {
-  var maxZkillKills = 200;
-  url = get_url("zkill_batch", {
+  // FIX: zKill returns up to 1000 kills per page (not 200 as the old code assumed).
+  // Using the wrong limit caused premature pagination — fetching extra pages
+  // unnecessarily — and could also cause infinite loops if a corp had exactly
+  // 200 kills in the window.
+  var maxZkillKills = 1000;
+  var url = get_url("zkill_batch", {
     querryType: querryType,
     id: id,
-    startTime: window.starttime,
-    endTime: window.endtime,
     page: page,
   });
-  url_params = request_params.zkill_batch;
+  // FIX: Fresh params object each call.
+  var url_params = make_request_params("zkill_batch");
 
   return fetch(new Request(url, url_params))
     .then((response) => {
@@ -429,7 +449,7 @@ function request_kill_batch(id, querryType, page) {
         }
         window.partialKillData[partialKill.killmail_id] = partialKill;
       }
-      console.log("Obtained " + zkillData.length + " kills from zKill");
+      console.log("Obtained " + zkillData.length + " kills from zKill (page " + page + ")");
 
       if (zkillData.length == maxZkillKills)
         return request_kill_batch(id, querryType, page + 1);
@@ -448,18 +468,23 @@ function request_full_kill_data(partialKillData) {
       continue;
     }
 
-    url = get_url("esi_kill_data", {
-      killmail_id: id,
-      killmail_hash: partialKillData[id].zkb.hash,
-    });
-    url_params = request_params.esi_kill_data;
+    // FIX: Capture id and hash in a closure so the correct values are used
+    // inside the async .then() callback. Without this, all callbacks closed
+    // over the last value of `id` from the for..in loop.
+    (function(killId, killHash) {
+      var url = get_url("esi_kill_data", {
+        killmail_id: killId,
+        killmail_hash: killHash,
+      });
+      var url_params = make_request_params("esi_kill_data");
 
-    query = fetch(new Request(url, url_params)).then((response) => {
-      if (response.status != 200)
-        throw new Error("API request failed to get list of character IDs");
-      return response.json();
-    });
-    queries.push(query);
+      var query = fetch(new Request(url, url_params)).then((response) => {
+        if (response.status != 200)
+          throw new Error("API request failed to get kill data for " + killId);
+        return response.json();
+      });
+      queries.push(query);
+    })(id, partialKillData[id].zkb.hash);
   }
   return Promise.all(queries).then((results) => {
     for (var i = 0; i < results.length; ++i) {
@@ -475,7 +500,12 @@ function request_full_kill_data(partialKillData) {
 
       if (window.killIDs.indexOf(kill.killmail_id) >= 0) continue;
       if (!is_valid_kill(kill)) continue;
+
+      // FIX: Apply date-window filter client-side (replaces deprecated
+      // startTime/endTime zKill URL params).
       kill.date = get_date(kill.killmail_time);
+      if (!is_kill_in_time_window(kill)) continue;
+
       var v = kill.victim;
 
       mark_missing_type(v.ship_type_id, false);
