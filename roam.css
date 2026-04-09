@@ -551,6 +551,36 @@ a:hover { text-decoration: underline; }
     line-height: 1;
 }
 
+/* ── Error banner ───────────────────────────────────────────── */
+.error-banner {
+    display: none;
+    background: rgba(214, 60, 60, 0.12);
+    border: 1px solid var(--red);
+    border-radius: var(--radius);
+    color: var(--red);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    animation: fadeUp 0.3s ease both;
+}
+
+[data-theme="light"] .error-banner {
+    background: rgba(192, 40, 42, 0.08);
+}
+
+/* ── Fetch progress ─────────────────────────────────────────── */
+.fetch-progress {
+    display: none;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--amber-dim);
+    padding: 8px 0 4px;
+    animation: fadeUp 0.2s ease both;
+}
+
 /* ── Footer ─────────────────────────────────────────────────── */
 .site-footer {
     text-align: center;

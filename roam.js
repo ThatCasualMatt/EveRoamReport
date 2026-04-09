@@ -2,9 +2,8 @@
 //  - Input validation.
 //  - Abuse prevention and rate limiting (may require backend/caching).
 //  - Custom output formatting:
-//      - Different forum post templates.
 //      - Custom number formatting for isk values.
-//  - Other roam metrics>
+//  - Other roam metrics:
 //      - Damage?
 //      - Member participation on kills?
 //      - Time?
@@ -18,26 +17,35 @@
 //  - Detect missing fleet members?
 //  - Permalinks to roam reports?
 //  - Additional visualisations?
-//      - visual timeline?
-//      - parallel tracks for different systems?
-//      - show deaths on grid
-//  - Detect if browser is supported (obviously, Fetch API is not supported in IE).
+//      - Visual timeline?
+//      - Parallel tracks for different systems?
+//      - Show deaths on grid
+//  - Detect if browser is supported (Fetch API not supported in IE).
 
-window.knownTypes = {};
-window.knownKillData = {};
+// ---------------------------------------------------------------------------
+// #12 — Named module-level constants (maxZkillKills was buried inside a function)
+// ---------------------------------------------------------------------------
+const ZKILL_PAGE_SIZE       = 1000;
+const ESI_BATCH_SIZE        = 1000;
+const ESI_KILL_CONCURRENCY  = 10;   // max simultaneous ESI killmail fetches
+const ESI_KILL_BATCH_DELAY  = 100;  // ms pause between ESI fetch batches
+
+// ---------------------------------------------------------------------------
+// Module state
+// ---------------------------------------------------------------------------
+window.knownTypes     = {};
+window.knownKillData  = {};
 window.partialKillData = {};
-// window.characters[id]: {name:string, alliance:id, corp:id, isFriendly:bool, shipsFlown:[id]}
+// window.characters[id]: {name, alliance, corp, isFriendly, shipsFlown}
 
-// FIX: Request params are now returned as fresh objects each call to avoid
-// mutation bugs when the same param object was reused across concurrent fetches.
+// ---------------------------------------------------------------------------
+// Request helpers
+// ---------------------------------------------------------------------------
 function make_request_params(kind, body) {
   if (kind === "names_batch" || kind === "esi_ids" || kind === "esi_affiliations") {
     return {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        accept: "application/json",
-      },
+      headers: { "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     };
   }
@@ -47,54 +55,84 @@ function make_request_params(kind, body) {
       mode: "cors",
       headers: {
         "Accept-Encoding": "gzip",
-        "User-Agent": "EveRoamReport https://github.com/ThatCasualMatt/EveRoamReport",
+        "User-Agent": "EveRoamReport https://roamreport.unfinishedprojects.xyz",
       },
     };
   }
   if (kind === "esi_kill_data") {
     return {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        accept: "application/json",
-      },
+      headers: { "Content-Type": "application/json", accept: "application/json" },
     };
   }
 }
 
 function get_url(kind, args) {
-  if (kind == "names_batch")
+  if (kind === "names_batch")
     return "https://esi.evetech.net/v1/universe/ids/?datasource=tranquility";
-  if (kind == "esi_ids")
+  if (kind === "esi_ids")
     return "https://esi.evetech.net/v3/universe/names/?datasource=tranquility";
-  if (kind == "esi_affiliations")
+  if (kind === "esi_affiliations")
     return "https://esi.evetech.net/v1/characters/affiliation/?datasource=tranquility";
-  if (kind == "zkill_batch")
-    // FIX: Removed startTime/endTime — those params were deprecated and silently
-    // ignored by zKill. We now use pastSeconds (max 7 days = 604800s) and filter
-    // by date client-side. The old code also used 172800s (48h) which was too
-    // short for roams that started more than 2 days ago.
-    return `https://zkillboard.com/api/${args.querryType}/${args.id}/pastSeconds/604800/page/${args.page}/`;
-  if (kind == "esi_kill_data")
+  if (kind === "zkill_batch")
+    // #11 — Fixed typo: querryType -> queryType
+    return `https://zkillboard.com/api/${args.queryType}/${args.id}/pastSeconds/604800/page/${args.page}/`;
+  if (kind === "esi_kill_data")
     return `https://esi.evetech.net/v1/killmails/${args.killmail_id}/${args.killmail_hash}/`;
 }
 
-function numeric_sort(a, b) {
-  return a - b;
+// ---------------------------------------------------------------------------
+// UI helpers
+// ---------------------------------------------------------------------------
+
+// #4 — Surface errors in the UI instead of only logging to the console
+function show_error(message) {
+  let banner = document.getElementById("error-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "error-banner";
+    banner.className = "error-banner";
+    document.querySelector(".page-container").prepend(banner);
+  }
+  banner.textContent = "⚠ " + message;
+  banner.style.display = "block";
+  console.error(message);
 }
 
+function hide_error() {
+  const banner = document.getElementById("error-banner");
+  if (banner) banner.style.display = "none";
+}
+
+// #3 — Show live progress during ESI kill fetching
+function update_progress(current, total) {
+  const el = document.getElementById("fetch-progress");
+  if (!el) return;
+  if (total === 0) {
+    el.textContent = "";
+    el.style.display = "none";
+    return;
+  }
+  el.textContent = `Fetching kill data: ${current} / ${total}`;
+  el.style.display = "block";
+}
+
+// ---------------------------------------------------------------------------
+// Sort helpers
+// ---------------------------------------------------------------------------
 function affiliation_sort(a, b) {
-  char_a = window.characters[a];
-  char_b = window.characters[b];
+  // #8 — char_a, char_b were accidentally global
+  const char_a = window.characters[a];
+  const char_b = window.characters[b];
   if (char_a.alliance === char_b.alliance) return char_a.corp - char_b.corp;
   if (char_a.alliance === undefined) return -1;
-  if (char_b.alliance === undefined) return 1;
+  if (char_b.alliance === undefined) return  1;
   return char_a.alliance - char_b.alliance;
 }
 
 function kill_sort(a, b) {
-  if (a.date > b.date) return 1;
-  if (a.date == b.date) return 0;
+  if (a.date > b.date) return  1;
+  if (a.date === b.date) return 0;
   return -1;
 }
 
@@ -102,9 +140,12 @@ function char_alpha_sort(a, b) {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------
+// Date / time helpers
+// ---------------------------------------------------------------------------
 function get_date(str) {
-  var date = new Date(str);
-  // Firefox date parsing workaround.
+  let date = new Date(str);
+  // Firefox date parsing workaround
   if (
     Object.prototype.toString.call(date) !== "[object Date]" ||
     isNaN(date.getTime())
@@ -116,663 +157,574 @@ function get_date(str) {
   return date;
 }
 
-// Converts ESI ISO timestamp "2024-03-15T14:32:07Z" → "2024-03-15  14:32:07"
+// Converts ESI ISO timestamp "2024-03-15T14:32:07Z" -> "2024-03-15  14:32:07"
 function format_killmail_time(isoStr) {
   if (!isoStr) return "";
   return isoStr.slice(0, 10) + "  " + isoStr.slice(11, 19);
 }
 
+// ---------------------------------------------------------------------------
+// Kill validation helpers
+// ---------------------------------------------------------------------------
 function get_kill_by_id(id, killList) {
-  for (var i = 0; i < killList.length; ++i) {
-    if (killList[i].killmail_id == id) return killList[i];
+  for (let i = 0; i < killList.length; ++i) {
+    if (killList[i].killmail_id === id) return killList[i];
   }
   return undefined;
 }
 
 function is_valid_kill(kill) {
   if (window.friendlies.has(kill.victim.character_id)) return true;
-
-  for (var j = 0; j < kill.attackers.length; ++j) {
-    var attacker = kill.attackers[j];
+  for (const attacker of kill.attackers) {
     if (window.friendlies.has(attacker.character_id)) return true;
   }
   return false;
 }
 
-// FIX: Added date-window check so kills outside the roam's time window are
-// discarded. This replaces the old (broken) startTime/endTime URL params.
 function is_kill_in_time_window(kill) {
-  if (!kill.killmail_time) return true; // can't tell, keep it
-  var killDate = get_date(kill.killmail_time);
+  if (!kill.killmail_time) return true;
+  const killDate = get_date(kill.killmail_time);
   if (window.roamStartDate && killDate < window.roamStartDate) return false;
-  if (window.roamEndDate && killDate > window.roamEndDate) return false;
+  if (window.roamEndDate   && killDate > window.roamEndDate)   return false;
   return true;
 }
 
 function mark_missing_type(id, isCharacter) {
   if (id === undefined) return;
-
-  if (
-    !isCharacter &&
-    !window.knownTypes[id] &&
-    window.unknownTypes.indexOf(id) == -1
-  ) {
-    window.unknownTypes.push(id);
-  } else if (isCharacter && window.characters[id] === undefined) {
-    window.unknownTypes.push(id);
+  if (!isCharacter) {
+    // #1 — Solar system IDs now flow through this same pipeline.
+    //      ESI /universe/names/ returns category "solar_system" and stores
+    //      the name in knownTypes, so data.js is no longer needed.
+    if (!window.knownTypes[id] && window.unknownTypes.indexOf(id) === -1)
+      window.unknownTypes.push(id);
+  } else {
+    if (window.characters[id] === undefined)
+      window.unknownTypes.push(id);
   }
 }
 
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
 function get_roam() {
-  var loader = document.getElementsByClassName("loader")[0];
+  hide_error();
+
+  const loader   = document.getElementsByClassName("loader")[0];
   loader.style.display = "inherit";
 
-  var elem = document.getElementsByName("names")[0];
-  var nameList = elem.value.split("\n");
-  window.finalNames = [];
-  window.killIDs = [];
-  window.unsortedKills = [];
-  window.friendlies = new Set();
-  window.characters = {};
+  const elem     = document.getElementsByName("names")[0];
+  const nameList = elem.value.split("\n");
+
+  window.finalNames      = [];
+  window.killIDs         = [];
+  window.unsortedKills   = [];
+  window.friendlies      = new Set();
+  window.characters      = {};
   window.partialKillData = {};
-  window.unknownTypes = [];
-  var charNameRegex1 = /\[ ([\d\. :]+) \] ([ a-zA-Z0-9-']{3,37}) > /;
-  var charNameRegex2 = /^\s*([ a-zA-Z0-9-']{3,37})\s*$/;
+  window.unknownTypes    = [];
 
-  window.starttime = undefined;
-  window.endtime = undefined;
-  var startDate = undefined;
-  var endDate = undefined;
+  const charNameRegex1 = /\[ ([\d\. :]+) \] ([ a-zA-Z0-9-']{3,37}) > /;
+  const charNameRegex2 = /^\s*([ a-zA-Z0-9-']{3,37})\s*$/;
 
-  for (var i = 0; i < nameList.length; ++i) {
-    var line = nameList[i].trim();
-    var name = undefined;
-    var match = undefined;
+  let startDate;
+  let endDate;
+
+  for (let i = 0; i < nameList.length; ++i) {
+    const line = nameList[i].trim();
+    let name;
+    let match;
 
     if ((match = charNameRegex1.exec(line)) !== null) {
       name = match[2].trim();
-      var date = get_date(match[1] + " GMT");
+      const date = get_date(match[1] + " GMT");
       if (startDate === undefined || date < startDate) startDate = date;
-      if (endDate === undefined || date > endDate) endDate = date;
+      if (endDate   === undefined || date > endDate)   endDate   = date;
     } else if ((match = charNameRegex2.exec(line)) !== null) {
       name = match[1].trim();
     }
 
-    // If the player named "EVE System" ever becomes active, this script will no longer be accurate.
-    if (name && name != "EVE System" && window.finalNames.indexOf(name) == -1) {
+    if (name && name !== "EVE System" && window.finalNames.indexOf(name) === -1) {
       window.finalNames.push(name);
     }
   }
 
-  var now = get_date(Date.now());
-  var threshold = new Date(now.getTime() - 60 * 60000);
-  var diff = endDate - threshold;
-  if (endDate > threshold) {
-    var result = window.confirm(
-      `WARNING! It can take up to 60 minutes to ensure zkill gets all the kills. We recommend you wait another ${Math.ceil(
-        diff / 60000
-      )} minutes before using this tool.\n\nAre you sure you wish to continue?`
-    );
+  const now       = get_date(Date.now());
+  const threshold = new Date(now.getTime() - 60 * 60000);
 
+  if (endDate > threshold) {
+    const diff   = endDate - threshold;
+    const result = window.confirm(
+      `WARNING! It can take up to 60 minutes to ensure zkill gets all the kills. ` +
+      `We recommend you wait another ${Math.ceil(diff / 60000)} minutes before using this tool.\n\n` +
+      `Are you sure you wish to continue?`
+    );
     if (!result) {
-      var loader = document.getElementsByClassName("loader")[0];
       loader.style.display = "none";
       return;
     }
   }
 
   endDate.setHours(endDate.getHours() + 1);
-  window.starttime = startDate.toISOString().replace(/[-T]/g, "").slice(0, 10);
-  window.endtime = endDate.toISOString().replace(/[-T]/g, "").slice(0, 10);
 
-  // FIX: Store Date objects for client-side kill filtering (replaces deprecated
-  // startTime/endTime URL params that zKill no longer supports).
-  window.roamStartDate = new Date(startDate.getTime() - 60 * 60 * 1000); // 1h before first message
-  window.roamEndDate = endDate;
+  // Store Date objects for client-side kill window filtering
+  window.roamStartDate = new Date(startDate.getTime() - 60 * 60 * 1000); // 1h buffer
+  window.roamEndDate   = endDate;
 
-  console.log("Players involved:" + window.finalNames);
+  console.log("Players involved:", window.finalNames);
 
   request_ids_for_names(window.finalNames, true)
-    .then(() => {
-      return request_affiliations_for_unknown_characters();
-    })
-    .then(() => {
-      return request_all_kills([...window.friendlies]);
-    })
-    .then(() => {
-      return request_full_kill_data(window.partialKillData);
-    })
-    .then((args) => {
-      return request_names_for_ids(window.unknownTypes);
-    })
-    .then((args) => {
-      process_kills();
-    })
+    .then(() => request_affiliations_for_unknown_characters())
+    // #6 — Query per characterID; avoids fetching entire corp/alliance history
+    .then(() => request_all_kills_by_character([...window.friendlies]))
+    .then(() => request_full_kill_data(window.partialKillData))
+    .then(() => request_names_for_ids(window.unknownTypes))
+    .then(() => process_kills())
     .catch((error) => {
-      console.error(error);
-      var loader = document.getElementsByClassName("loader")[0];
+      // #4 — Show error in UI
+      show_error("Something went wrong: " + error.message);
       loader.style.display = "none";
+      update_progress(0, 0);
     });
 }
 
+// ---------------------------------------------------------------------------
+// ESI: character name -> ID
+// ---------------------------------------------------------------------------
 function request_ids_for_names(names, addToFriendlies) {
-  esiIdCountLimit = 1000;
-
-  names = Array.from(new Set(names));
-  var count = names.length;
-  var requests = [];
-  for (var start = 0; start < count; start = start + esiIdCountLimit) {
-    var batch = names.slice(start, start + esiIdCountLimit);
-    requests.push(request_ids_for_names_batch(batch, addToFriendlies));
+  // #8 — esiIdCountLimit was accidentally global
+  const deduped  = Array.from(new Set(names));
+  const requests = [];
+  for (let start = 0; start < deduped.length; start += ESI_BATCH_SIZE) {
+    requests.push(request_ids_for_names_batch(deduped.slice(start, start + ESI_BATCH_SIZE), addToFriendlies));
   }
   return Promise.all(requests);
 }
 
 function request_ids_for_names_batch(names, addToFriendlies) {
-  var url = get_url("names_batch");
-  // FIX: Fresh params object each call — avoids shared-object mutation bugs.
-  var url_params = make_request_params("names_batch", names);
+  const url        = get_url("names_batch");
+  const url_params = make_request_params("names_batch", names);
 
   return fetch(new Request(url, url_params))
     .then((response) => {
-      if (response.status != 200)
-        throw new Error("API request failed to get list of character IDs");
+      if (response.status !== 200)
+        throw new Error("ESI /universe/ids/ request failed (status " + response.status + ")");
       return response.json();
     })
     .then((jsonData) => {
-      if (jsonData.characters === undefined) jsonData.characters = [];
-
-      var chars = jsonData.characters;
-      for (var i = 0; i < chars.length; ++i) {
-        window.characters[chars[i].id] = {
-          name: chars[i].name,
-          isFriendly: addToFriendlies,
-          shipsFlown: [],
-        };
-        if (addToFriendlies) window.friendlies.add(chars[i].id);
+      const chars = jsonData.characters || [];
+      for (const char of chars) {
+        window.characters[char.id] = { name: char.name, isFriendly: addToFriendlies, shipsFlown: [] };
+        if (addToFriendlies) window.friendlies.add(char.id);
       }
-
-      console.log("Got batch of character IDs");
+      console.log("Got batch of character IDs:", chars.length);
     });
 }
 
+// ---------------------------------------------------------------------------
+// ESI: ID -> name (handles characters, ships, AND solar systems)
+// #1 — Adding "solar_system" handling here means data.js is no longer needed
+// ---------------------------------------------------------------------------
 function request_names_for_ids(IDs) {
-  esiIdCountLimit = 1000;
-
-  IDs = Array.from(new Set(IDs));
-  var count = IDs.length;
-  var requests = [];
-  for (var start = 0; start < count; start = start + esiIdCountLimit) {
-    var batch = IDs.slice(start, start + esiIdCountLimit);
-    requests.push(request_names_for_ids_batch(batch));
+  // #8 — IDs was accidentally global
+  const deduped  = Array.from(new Set(IDs));
+  const requests = [];
+  for (let start = 0; start < deduped.length; start += ESI_BATCH_SIZE) {
+    requests.push(request_names_for_ids_batch(deduped.slice(start, start + ESI_BATCH_SIZE)));
   }
   return Promise.all(requests);
 }
 
 function request_names_for_ids_batch(IDs) {
-  var url = get_url("esi_ids");
-  // FIX: Fresh params object each call.
-  var url_params = make_request_params("esi_ids", IDs);
+  const url        = get_url("esi_ids");
+  const url_params = make_request_params("esi_ids", IDs);
 
   return fetch(new Request(url, url_params))
     .then((response) => {
-      if (response.status != 200)
-        throw new Error("API request failed to get list of character IDs");
-      console.log("Got batch of missing names");
+      if (response.status !== 200)
+        throw new Error("ESI /universe/names/ request failed (status " + response.status + ")");
       return response.json();
     })
     .then((jsonData) => {
-      for (var i = 0; i < jsonData.length; ++i) {
-        if (jsonData[i].category == "character") {
-          window.characters[jsonData[i].id] = {
-            name: jsonData[i].name,
-            isFriendly: false,
-            shipsFlown: [],
-          };
+      for (const item of jsonData) {
+        if (item.category === "character") {
+          // Don't overwrite friendlies already stored with full data
+          if (!window.characters[item.id]) {
+            window.characters[item.id] = { name: item.name, isFriendly: false, shipsFlown: [] };
+          }
         } else {
-          window.knownTypes[jsonData[i].id] = jsonData[i].name;
+          // Covers inventory_type (ships), solar_system, station, etc.
+          window.knownTypes[item.id] = item.name;
         }
       }
+      console.log("Got batch of names:", jsonData.length);
     });
 }
 
+// ---------------------------------------------------------------------------
+// ESI: character affiliations (corp / alliance)
+// ---------------------------------------------------------------------------
 function request_affiliations_for_unknown_characters() {
-  esiIdCountLimit = 1000;
-
-  unknownCharacters = [];
-  for (var key in window.characters) {
+  // #8 — unknownCharacters and IDs were accidentally global
+  const unknownCharacters = [];
+  for (const key in window.characters) {
     if (window.characters[key].corporation_id === undefined)
       unknownCharacters.push(key);
   }
-
-  // FIX: ESI affiliation endpoint requires integer IDs, not strings.
-  // Object.keys() returns strings, so we parse them here.
-  IDs = Array.from(new Set(unknownCharacters)).map(Number);
-  var count = IDs.length;
-  var requests = [];
-  for (var start = 0; start < count; start = start + esiIdCountLimit) {
-    var batch = IDs.slice(start, start + esiIdCountLimit);
-    requests.push(request_affiliations_for_char_ids_batch(batch));
+  // ESI affiliation endpoint requires integer IDs (Object.keys returns strings)
+  const IDs      = Array.from(new Set(unknownCharacters)).map(Number);
+  const requests = [];
+  for (let start = 0; start < IDs.length; start += ESI_BATCH_SIZE) {
+    requests.push(request_affiliations_for_char_ids_batch(IDs.slice(start, start + ESI_BATCH_SIZE)));
   }
   return Promise.all(requests);
 }
 
 function request_affiliations_for_char_ids_batch(IDs) {
-  var url = get_url("esi_affiliations");
-  // FIX: Fresh params object each call.
-  var url_params = make_request_params("esi_affiliations", IDs);
+  const url        = get_url("esi_affiliations");
+  const url_params = make_request_params("esi_affiliations", IDs);
 
   return fetch(new Request(url, url_params))
     .then((response) => {
-      if (response.status != 200)
-        throw new Error("API request failed to get list of character IDs");
-      console.log("Got batch of missing names");
+      if (response.status !== 200)
+        throw new Error("ESI /characters/affiliation/ request failed (status " + response.status + ")");
       return response.json();
     })
     .then((jsonData) => {
-      for (var i = 0; i < jsonData.length; ++i) {
-        var entry = jsonData[i];
-        window.characters[entry.character_id].corp = entry.corporation_id;
+      for (const entry of jsonData) {
+        window.characters[entry.character_id].corp     = entry.corporation_id;
         window.characters[entry.character_id].alliance = entry.alliance_id;
       }
     });
 }
 
-function request_all_kills(IDs) {
-  zkillCharacterLimit = 10;
-
-  IDs = IDs.sort(affiliation_sort);
-  var count = IDs.length;
-  start = 0;
-  end = 0;
-  requestType = "characterID";
-  var requests = [];
-
-  do {
-    startChar = window.characters[IDs[start]];
-    endCorpIdx = start + 1;
-    requestId = 0;
-    length = IDs.length;
-    while (
-      endCorpIdx < length &&
-      startChar.corp == window.characters[IDs[endCorpIdx]].corp
-    )
-      endCorpIdx++;
-
-    endAllianceIdx = endCorpIdx;
-    while (
-      endAllianceIdx < length &&
-      startChar.alliance == window.characters[IDs[endAllianceIdx]].alliance
-    )
-      endAllianceIdx++;
-
-    if (endCorpIdx === start + 1) {
-      requestType = "characterID";
-      reqiestId = IDs[start];
-      end = start + 1;
-    } else if (endAllianceIdx == endCorpIdx) {
-      requestType = "corporationID";
-      reqiestId = startChar.corp;
-      end = endCorpIdx;
-    } else {
-      requestType = "allianceID";
-      reqiestId = startChar.alliance;
-      end = endAllianceIdx;
-    }
-
-    requests.push(request_kill_batch(reqiestId, requestType, 1));
-    start = end;
-  } while (start < count);
-
+// ---------------------------------------------------------------------------
+// zKillboard: fetch kill stubs
+// #6 — Replaced corp/alliance grouping logic with per-character queries.
+//      The old approach could fetch thousands of irrelevant kills when any
+//      two fleet members happened to share a large corp or alliance.
+//      Per-character queries are more targeted and reliably scoped.
+// ---------------------------------------------------------------------------
+function request_all_kills_by_character(characterIDs) {
+  const requests = characterIDs.map((id) => request_kill_batch(id, "characterID", 1));
   return Promise.all(requests);
 }
 
-function request_kill_batch(id, querryType, page) {
-  // FIX: zKill returns up to 1000 kills per page (not 200 as the old code assumed).
-  // Using the wrong limit caused premature pagination — fetching extra pages
-  // unnecessarily — and could also cause infinite loops if a corp had exactly
-  // 200 kills in the window.
-  var maxZkillKills = 1000;
-  var url = get_url("zkill_batch", {
-    querryType: querryType,
-    id: id,
-    page: page,
-  });
-  // FIX: Fresh params object each call.
-  var url_params = make_request_params("zkill_batch");
+function request_kill_batch(id, queryType, page) {
+  // #11 — Fixed typo: querryType -> queryType throughout
+  const url        = get_url("zkill_batch", { queryType, id, page });
+  const url_params = make_request_params("zkill_batch");
 
   return fetch(new Request(url, url_params))
     .then((response) => {
-      if (response.status != 200)
-        throw new Error("API request failed to get kills");
+      if (response.status !== 200)
+        throw new Error("zKill API request failed (status " + response.status + ")");
       return response.json();
     })
     .then((zkillData) => {
-      for (var i = 0; i < zkillData.length; ++i) {
-        var partialKill = window.knownKillData[zkillData[i].killmail_id];
-        if (partialKill === undefined) {
-          partialKill = zkillData[i];
+      for (const stub of zkillData) {
+        if (!window.knownKillData[stub.killmail_id]) {
+          window.partialKillData[stub.killmail_id] = stub;
         }
-        window.partialKillData[partialKill.killmail_id] = partialKill;
       }
-      console.log("Obtained " + zkillData.length + " kills from zKill (page " + page + ")");
-
-      if (zkillData.length == maxZkillKills)
-        return request_kill_batch(id, querryType, page + 1);
+      console.log(`zKill: ${zkillData.length} kills for ${queryType}/${id} page ${page}`);
+      // #12 — ZKILL_PAGE_SIZE is now a named constant at the top of the file
+      if (zkillData.length === ZKILL_PAGE_SIZE)
+        return request_kill_batch(id, queryType, page + 1);
     });
 }
 
-function request_full_kill_data(partialKillData) {
-  queries = [];
-  for (var id in partialKillData) {
+// ---------------------------------------------------------------------------
+// ESI: fetch full killmail data
+// #2 — Rate-limited: ESI_KILL_CONCURRENCY fetches at a time with a small delay
+//      between batches, preventing ESI's error-rate limiter from triggering on
+//      large fleets where hundreds of kills might need fetching at once.
+// #3 — Reports live progress to the UI during fetching.
+// ---------------------------------------------------------------------------
+async function request_full_kill_data(partialKillData) {
+  const toFetch = [];
+
+  for (const id in partialKillData) {
     if (partialKillData[id].victim !== undefined) {
-      queries.push(
-        new Promise(function (resolve, reject) {
-          resolve(partialKillData[id]);
-        })
-      );
-      continue;
+      // Full data already cached from a previous processing run
+      enqueue_kill_result(partialKillData[id]);
+    } else {
+      toFetch.push({ id, hash: partialKillData[id].zkb.hash });
     }
-
-    // FIX: Capture id and hash in a closure so the correct values are used
-    // inside the async .then() callback. Without this, all callbacks closed
-    // over the last value of `id` from the for..in loop.
-    (function(killId, killHash) {
-      var url = get_url("esi_kill_data", {
-        killmail_id: killId,
-        killmail_hash: killHash,
-      });
-      var url_params = make_request_params("esi_kill_data");
-
-      var query = fetch(new Request(url, url_params)).then((response) => {
-        if (response.status != 200)
-          throw new Error("API request failed to get kill data for " + killId);
-        return response.json();
-      });
-      queries.push(query);
-    })(id, partialKillData[id].zkb.hash);
   }
-  return Promise.all(queries).then((results) => {
-    for (var i = 0; i < results.length; ++i) {
-      r = results[i];
-      kill = window.partialKillData[r.killmail_id];
-      kill.attackers = r.attackers;
-      kill.solar_system_id = r.solar_system_id;
-      kill.victim = r.victim;
-      kill.moon_id = r.moon_id;
-      kill.war_id = r.war_id;
-      kill.killmail_time = r.killmail_time;
-      window.knownKillData[r.killmail_id] = kill;
 
-      if (window.killIDs.indexOf(kill.killmail_id) >= 0) continue;
-      if (!is_valid_kill(kill)) continue;
+  const total  = toFetch.length;
+  let   fetched = 0;
+  update_progress(fetched, total);
 
-      // FIX: Apply date-window filter client-side (replaces deprecated
-      // startTime/endTime zKill URL params).
-      kill.date = get_date(kill.killmail_time);
-      if (!is_kill_in_time_window(kill)) continue;
+  for (let i = 0; i < toFetch.length; i += ESI_KILL_CONCURRENCY) {
+    const batch = toFetch.slice(i, i + ESI_KILL_CONCURRENCY);
 
-      var v = kill.victim;
+    const results = await Promise.all(batch.map(({ id, hash }) => {
+      const url        = get_url("esi_kill_data", { killmail_id: id, killmail_hash: hash });
+      const url_params = make_request_params("esi_kill_data");
+      return fetch(new Request(url, url_params))
+        .then((response) => {
+          if (response.status !== 200)
+            throw new Error("ESI killmail fetch failed for " + id + " (status " + response.status + ")");
+          return response.json();
+        });
+    }));
 
-      mark_missing_type(v.ship_type_id, false);
-      mark_missing_type(v.character_id, true);
-
-      for (var j = 0; j < kill.attackers.length; ++j) {
-        var attacker = kill.attackers[j];
-
-        if (attacker.final_blow) {
-          mark_missing_type(attacker.character_id, true);
-        }
-
-        mark_missing_type(attacker.ship_type_id, false);
-      }
-
-      window.killIDs.push(kill.killmail_id);
-      window.unsortedKills.push(kill);
+    for (const result of results) {
+      enqueue_kill_result(result);
     }
-  });
+
+    fetched += batch.length;
+    update_progress(fetched, total);
+
+    if (i + ESI_KILL_CONCURRENCY < toFetch.length)
+      await new Promise((resolve) => setTimeout(resolve, ESI_KILL_BATCH_DELAY));
+  }
+
+  update_progress(0, 0);
 }
 
+function enqueue_kill_result(esiData) {
+  // #8 — r and kill were accidentally global in the old Promise.all() loop
+  const kill = window.partialKillData[esiData.killmail_id];
+  if (!kill) return;
+
+  kill.attackers       = esiData.attackers;
+  kill.solar_system_id = esiData.solar_system_id;
+  kill.victim          = esiData.victim;
+  kill.moon_id         = esiData.moon_id;
+  kill.war_id          = esiData.war_id;
+  kill.killmail_time   = esiData.killmail_time;
+  window.knownKillData[esiData.killmail_id] = kill;
+
+  if (window.killIDs.indexOf(kill.killmail_id) >= 0) return;
+  if (!is_valid_kill(kill)) return;
+
+  kill.date = get_date(kill.killmail_time);
+  if (!is_kill_in_time_window(kill)) return;
+
+  const v = kill.victim;
+  mark_missing_type(v.ship_type_id, false);
+  mark_missing_type(v.character_id, true);
+  // #1 — Queue solar system ID for ESI resolution (replaces data.js static lookup)
+  mark_missing_type(kill.solar_system_id, false);
+
+  for (const attacker of kill.attackers) {
+    if (attacker.final_blow) mark_missing_type(attacker.character_id, true);
+    mark_missing_type(attacker.ship_type_id, false);
+  }
+
+  window.killIDs.push(kill.killmail_id);
+  window.unsortedKills.push(kill);
+}
+
+// ---------------------------------------------------------------------------
+// Build kill display table
+// ---------------------------------------------------------------------------
 function process_kills() {
   console.log("Processing kills...");
 
   window.workingKillSet = window.unsortedKills.sort(kill_sort);
-  var table = document.getElementsByName("killdisplay")[0];
+
+  const table = document.getElementsByName("killdisplay")[0];
   table.innerHTML =
-    '<div class="krh"><div class="kh">New fight?</div><div class="kh">Time</div><div class="kh">Kill/Loss</div><div class="kh">Ship</div><div class="kh">Victim</div><div class="kh">Final Blow</div><div class="kh">Location</div><div class="kh">ISK</div></div>';
+    '<div class="krh">' +
+    '<div class="kh">New fight?</div>' +
+    '<div class="kh">Time</div>' +
+    '<div class="kh">Kill/Loss</div>' +
+    '<div class="kh">Ship</div>' +
+    '<div class="kh">Victim</div>' +
+    '<div class="kh">Final Blow</div>' +
+    '<div class="kh">Location</div>' +
+    '<div class="kh">ISK</div>' +
+    '</div>';
 
-  for (var i = 0; i < window.workingKillSet.length; ++i) {
-    var kill = window.workingKillSet[i];
-    var is_friendly = window.friendlies.has(kill.victim.character_id);
-    var row = document.createElement("div");
+  for (let i = 0; i < window.workingKillSet.length; ++i) {
+    const kill        = window.workingKillSet[i];
+    const is_friendly = window.friendlies.has(kill.victim.character_id);
+
+    const row = document.createElement("div");
     row.className = "kr-on";
+    row.name      = kill.killmail_id;
     table.appendChild(row);
-    row.name = kill.killmail_id;
 
-    kill.display_row = row;
-    kill.is_friendly = is_friendly;
-    kill.is_included = true;
-    kill.is_fight_start =
-      i == 0 || kill.date - window.workingKillSet[i - 1].date > 5 * 60 * 1000;
+    kill.display_row    = row;
+    kill.is_friendly    = is_friendly;
+    kill.is_included    = true;
+    kill.is_fight_start = i === 0 || kill.date - window.workingKillSet[i - 1].date > 5 * 60 * 1000;
 
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    cell.innerHTML =
-      '<input type="checkbox" checked id="' + kill.killmail_id + '">';
-    kill.is_fight_start_check_box = cell.children[0];
+    // — New fight? checkbox —
+    const checkCell = document.createElement("div");
+    checkCell.className = "kd";
+    checkCell.innerHTML = `<input type="checkbox" id="${kill.killmail_id}">`;
+    row.appendChild(checkCell);
+
+    kill.is_fight_start_check_box         = checkCell.children[0];
     kill.is_fight_start_check_box.checked = kill.is_fight_start;
-    kill.is_fight_start_check_box.addEventListener("change", function (event) {
-      var kill = get_kill_by_id(
-        parseInt(event.target.id),
-        window.workingKillSet
-      );
-      kill.is_fight_start = event.target.checked;
-      update_kill_display(kill);
+
+    kill.is_fight_start_check_box.addEventListener("change", (event) => {
+      const k = get_kill_by_id(parseInt(event.target.id), window.workingKillSet);
+      k.is_fight_start = event.target.checked;
+      update_kill_display(k);
     });
+    kill.is_fight_start_check_box.addEventListener("mousedown", (e) => e.stopPropagation());
+    kill.is_fight_start_check_box.addEventListener("touchdown",  (e) => e.stopPropagation());
 
-    kill.is_fight_start_check_box.addEventListener(
-      "mousedown",
-      function (event) {
-        event.stopPropagation();
-      }
-    );
-    kill.is_fight_start_check_box.addEventListener(
-      "touchdown",
-      function (event) {
-        event.stopPropagation();
-      }
-    );
-
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    cell.innerHTML =
-      "<a href=https://zkillboard.com/kill/" +
-      kill.killmail_id +
-      '/ target="_blank">' +
+    // — Time (linked to zKill) —
+    const timeCell = document.createElement("div");
+    timeCell.className = "kd";
+    timeCell.innerHTML =
+      `<a href="https://zkillboard.com/kill/${kill.killmail_id}/" target="_blank">` +
       format_killmail_time(kill.killmail_time) +
       "</a>";
-    kill.zkill_href = cell.children[0];
+    row.appendChild(timeCell);
+    kill.zkill_href = timeCell.children[0];
+    kill.zkill_href.addEventListener("mousedown", (e) => e.stopPropagation());
+    kill.zkill_href.addEventListener("touchdown",  (e) => e.stopPropagation());
 
-    kill.zkill_href.addEventListener("mousedown", function (event) {
-      event.stopPropagation();
-    });
-    kill.zkill_href.addEventListener("touchdown", function (event) {
-      event.stopPropagation();
-    });
+    // — Kill / Loss —
+    const typeCell = document.createElement("div");
+    typeCell.className = "kd";
+    typeCell.appendChild(document.createTextNode(is_friendly ? "Loss" : "Kill"));
+    row.appendChild(typeCell);
 
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    t = document.createTextNode(is_friendly ? "Loss" : "Kill");
-    cell.appendChild(t);
+    // — Ship —
+    const shipCell = document.createElement("div");
+    shipCell.className = "kd";
+    shipCell.appendChild(document.createTextNode(window.knownTypes[kill.victim.ship_type_id] || "Unknown Type"));
+    row.appendChild(shipCell);
 
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    var shipName = window.knownTypes[kill.victim.ship_type_id];
-    if (shipName === undefined) shipName = "Unknown Type";
-    t = document.createTextNode(shipName);
-    cell.appendChild(t);
+    // — Victim —
+    const victimCell = document.createElement("div");
+    victimCell.className = "kd";
+    const pilotName = kill.victim.character_id && window.characters[kill.victim.character_id]
+      ? window.characters[kill.victim.character_id].name : "";
+    victimCell.appendChild(document.createTextNode(pilotName));
+    row.appendChild(victimCell);
 
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    var pilotName = kill.victim.character_id
-      ? window.characters[kill.victim.character_id].name
-      : "";
-    t = document.createTextNode(pilotName);
-    cell.appendChild(t);
+    // — Final Blow —
+    const fbCell     = document.createElement("div");
+    fbCell.className = "kd";
+    const fbAttacker = kill.attackers.find((x) => x.final_blow);
+    const fbChar     = fbAttacker && window.characters[fbAttacker.character_id];
+    fbCell.appendChild(document.createTextNode(fbChar ? fbChar.name : ""));
+    row.appendChild(fbCell);
 
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    var char =
-      window.characters[
-        kill.attackers.filter((x) => x.final_blow == 1)[0].character_id
-      ];
-    if (char) char = char.name;
-    t = document.createTextNode(char);
-    cell.appendChild(t);
+    // — Location —
+    // #1 — Reads from knownTypes (resolved via ESI), replacing the data.js lookup
+    const locCell = document.createElement("div");
+    locCell.className = "kd";
+    locCell.appendChild(document.createTextNode(
+      window.knownTypes[kill.solar_system_id] || "sysId_" + kill.solar_system_id
+    ));
+    row.appendChild(locCell);
 
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    var systemName = window.solarSystems[kill.solar_system_id];
-    if (systemName === undefined) systemName = "sysId_" + kill.solar_system_id;
-    t = document.createTextNode(systemName);
-    cell.appendChild(t);
-
-    var cell = document.createElement("div");
-    cell.className = "kd";
-    row.appendChild(cell);
-    t = document.createTextNode(
+    // — ISK —
+    const iskCell = document.createElement("div");
+    iskCell.className = "kd";
+    iskCell.appendChild(document.createTextNode(
       Math.round(kill.zkb.totalValue / 10000) / 100 + "m"
-    );
-    cell.appendChild(t);
+    ));
+    row.appendChild(iskCell);
 
     update_kill_display(kill);
   }
 
-  var loader = document.getElementsByClassName("loader")[0];
-  loader.style.display = "none";
-  var stepTwo = document.getElementsByClassName("step-two")[0];
-  stepTwo.style.display = "inherit";
+  document.getElementsByClassName("loader")[0].style.display = "none";
+  document.getElementsByClassName("step-two")[0].style.display = "inherit";
 }
 
+// ---------------------------------------------------------------------------
+// Kill row styling
+// ---------------------------------------------------------------------------
 function update_kill_display(kill) {
   kill.is_fight_start_check_box.checked = kill.is_fight_start;
-  if (kill.is_fight_start) {
-    kill.display_row.style.borderTop = "solid 2px #ccc";
-  } else {
-    kill.display_row.style.borderTop = "0px";
-  }
+  kill.display_row.style.borderTop = kill.is_fight_start ? "solid 2px #ccc" : "0px";
 
   if (kill.is_included) {
-    kill.display_row.className = "kr-on";
+    kill.display_row.className   = "kr-on";
     kill.display_row.style.color = kill.is_friendly ? "red" : "green";
   } else {
-    kill.display_row.className = "kr-off";
+    kill.display_row.className   = "kr-off";
     kill.display_row.style.color = "#aaa";
   }
 }
 
+// ---------------------------------------------------------------------------
+// Generate AAR output
+// ---------------------------------------------------------------------------
 function get_forum_post() {
-  for (var key in window.characters) {
+  for (const key in window.characters) {
     window.characters[key].shipsFlown = [];
   }
 
-  for (var i = 0; i < window.workingKillSet.length; ++i) {
-    var kill = window.workingKillSet[i];
+  for (const kill of window.workingKillSet) {
     if (!kill.is_included) continue;
 
-    var v = kill.victim;
-    if (
-      v.character_id !== undefined &&
-      window.characters[v.character_id] !== undefined &&
-      !window.characters[v.character_id].shipsFlown.includes(v.ship_type_id)
-    ) {
-      window.characters[v.character_id].shipsFlown.push(v.ship_type_id);
+    const v = kill.victim;
+    if (v.character_id !== undefined && window.characters[v.character_id] !== undefined) {
+      if (!window.characters[v.character_id].shipsFlown.includes(v.ship_type_id))
+        window.characters[v.character_id].shipsFlown.push(v.ship_type_id);
     }
 
-    for (var j = 0; j < kill.attackers.length; ++j) {
-      var attacker = kill.attackers[j];
-      if (
-        attacker.character_id !== undefined &&
-        window.characters[attacker.character_id] !== undefined &&
-        !window.characters[attacker.character_id].shipsFlown.includes(
-          attacker.ship_type_id
-        )
-      ) {
-        window.characters[attacker.character_id].shipsFlown.push(
-          attacker.ship_type_id
-        );
+    for (const attacker of kill.attackers) {
+      if (attacker.character_id !== undefined && window.characters[attacker.character_id] !== undefined) {
+        if (!window.characters[attacker.character_id].shipsFlown.includes(attacker.ship_type_id))
+          window.characters[attacker.character_id].shipsFlown.push(attacker.ship_type_id);
       }
     }
   }
 
-  var sortedCharacters = Object.values(window.characters)
-    .filter((x) => x.isFriendly == 1)
+  // #9 — Use === true instead of == 1 for the isFriendly boolean check
+  const sortedCharacters = Object.values(window.characters)
+    .filter((x) => x.isFriendly === true)
     .sort(char_alpha_sort);
 
-  var templateName = document.getElementsByName("template")[0].value;
-  var template = window.templates[templateName];
+  const templateName = document.getElementsByName("template")[0].value;
+  const template     = window.templates[templateName];
 
-  var lines = [];
+  const lines = [];
   lines.push(template.header());
   lines.push(template.membersHeader(window.finalNames.length));
-  for (var i = 0; i < sortedCharacters.length; ++i) {
-    var char = sortedCharacters[i];
-    var shipList = [];
-    if (char.shipsFlown.length > 0) {
-      for (var j = 0; j < char.shipsFlown.length; ++j) {
-        var shipName = window.knownTypes[char.shipsFlown[j]];
-        if (shipName === undefined || shipName.includes("Capsule")) continue;
-        shipList.push(shipName);
-      }
-    }
+
+  for (const char of sortedCharacters) {
+    const shipList = char.shipsFlown
+      .map((id) => window.knownTypes[id])
+      .filter((name) => name !== undefined && !name.includes("Capsule"));
     lines.push(template.member(char.name, shipList));
   }
-  lines.push(template.membersFooter());
 
+  lines.push(template.membersFooter());
   lines.push(template.killsHeader());
 
-  var iskGain = 0;
-  var iskLoss = 0;
-  var addSeparator = true;
-  for (var i = 0; i < window.workingKillSet.length; ++i) {
-    var kill = window.workingKillSet[i];
+  let iskGain     = 0;
+  let iskLoss     = 0;
+  let addSeparator = true;
+
+  for (let i = 0; i < window.workingKillSet.length; ++i) {
+    const kill = window.workingKillSet[i];
     if (kill.is_fight_start) addSeparator = true;
     if (!kill.is_included) continue;
 
-    var friendlyLine = kill.is_friendly ? "FF0000]-" : "00FF00]+";
-    var shipName = window.knownTypes[kill.victim.ship_type_id];
-    if (shipName === undefined) shipName = "Unknown Type";
+    const shipName = window.knownTypes[kill.victim.ship_type_id] || "Unknown Type";
 
     if (addSeparator) {
-      var regions = [kill.solar_system_id];
-      for (var j = i + 1; j < window.workingKillSet.length; ++j) {
-        var kk = window.workingKillSet[j];
+      const systemIDs = [kill.solar_system_id];
+      for (let j = i + 1; j < window.workingKillSet.length; ++j) {
+        const kk = window.workingKillSet[j];
         if (kk.is_fight_start) break;
-        if (kk.is_included && regions.indexOf(kk.solar_system_id) == -1) {
-          regions.push(kk.solar_system_id);
-        }
+        if (kk.is_included && systemIDs.indexOf(kk.solar_system_id) === -1)
+          systemIDs.push(kk.solar_system_id);
       }
-      var regions = regions.map((x) => {
-        var systemName = window.solarSystems[x];
-        if (systemName === undefined) return "sysId_" + x;
-        return systemName;
-      });
-
-      var time = kill.killmail_time.slice(11, 19);
-      lines.push(template.killListSeparator(time, regions));
-
+      // #1 — System names now from knownTypes (ESI), not data.js
+      const regionNames = systemIDs.map((x) => window.knownTypes[x] || "sysId_" + x);
+      lines.push(template.killListSeparator(kill.killmail_time.slice(11, 19), regionNames));
       addSeparator = false;
     }
 
-    var zkillUrl = `https://zkillboard.com/kill/${kill.killmail_id}/`;
-    var zkillValue = Math.round(kill.zkb.totalValue / 10000) / 100;
+    const zkillUrl   = `https://zkillboard.com/kill/${kill.killmail_id}/`;
+    const zkillValue = Math.round(kill.zkb.totalValue / 10000) / 100;
+
     if (kill.is_friendly) {
       lines.push(template.loss(zkillUrl, shipName, zkillValue));
       iskLoss += kill.zkb.totalValue;
@@ -783,63 +735,67 @@ function get_forum_post() {
   }
 
   lines.push(template.killsFooter());
-
   lines.push(template.statsHeader());
   lines.push(template.stats(iskGain, iskLoss));
   lines.push(template.statsFooter());
-
   lines.push(template.footer());
 
-  var elem = document.getElementsByName("output")[0];
-  elem.value = lines.join("\n");
+  document.getElementsByName("output")[0].value = lines.join("\n");
 }
 
-var mouseDown = false;
-var previousRow = undefined;
-var enablingRows = false;
-// function kills_mouse_down('mousedown touchstart',
+// ---------------------------------------------------------------------------
+// Mouse / touch interaction for kill table
+// ---------------------------------------------------------------------------
+let mouseDown    = false;
+let previousRow  = undefined;
+let enablingRows = false;
+
 function kills_mouse_down(event) {
   event.preventDefault();
-  var row = event.target;
-  if (row.tagName == "a" || row.tagName == "input") return;
+  let row = event.target;
+  if (row.tagName === "a" || row.tagName === "input") return;
 
-  while (row && row.className != "kr-on" && row.className != "kr-off")
+  while (row && row.className !== "kr-on" && row.className !== "kr-off")
     row = row.parentElement;
-  if (row) {
-    kill = get_kill_by_id(parseInt(row.name), window.workingKillSet);
-    enablingRows = !kill.is_included;
-    mouseDown = true;
-    previousRow = undefined;
 
+  if (row) {
+    // #8 — kill was accidentally global here
+    const kill   = get_kill_by_id(parseInt(row.name), window.workingKillSet);
+    enablingRows = !kill.is_included;
+    mouseDown    = true;
+    previousRow  = undefined;
     kills_update_include_state(event);
   }
 }
 
 function kills_update_include_state(event) {
-  // event.preventDefault();
-  if (mouseDown) {
-    var row = event.target;
-    while (row && row.className != "kr-on" && row.className != "kr-off")
-      row = row.parentElement;
-    if (row && row != previousRow) {
-      kill = get_kill_by_id(parseInt(row.name), window.workingKillSet);
-      kill.is_included = enablingRows;
-      update_kill_display(kill);
-    }
+  if (!mouseDown) return;
+  let row = event.target;
+  while (row && row.className !== "kr-on" && row.className !== "kr-off")
+    row = row.parentElement;
+  if (row && row !== previousRow) {
+    // #8 — kill was accidentally global here
+    const kill   = get_kill_by_id(parseInt(row.name), window.workingKillSet);
+    kill.is_included = enablingRows;
+    update_kill_display(kill);
+    previousRow = row;
   }
 }
 
-function window_mouse_up(event) {
+function window_mouse_up() {
   mouseDown = false;
 }
 
+// ---------------------------------------------------------------------------
+// File drop handler
+// ---------------------------------------------------------------------------
 function window_drop(event) {
-  if (event.dataTransfer.files.length == 0) return;
-  if (event.dataTransfer.files[0].type != "text/plain") return;
-
-  reader = new FileReader();
+  if (event.dataTransfer.files.length === 0) return;
+  if (event.dataTransfer.files[0].type !== "text/plain") return;
+  // #8 — reader was accidentally global
+  const reader = new FileReader();
   reader.readAsText(event.dataTransfer.files[0]);
-  reader.onloadend = function () {
+  reader.onloadend = () => {
     document.getElementsByName("names")[0].value = reader.result;
   };
 }
@@ -849,18 +805,20 @@ function prevent_defaults(e) {
   e.stopPropagation();
 }
 
-window.onload = function () {
-  var table = document.getElementsByName("killdisplay")[0];
-  console.log("loaded " + table);
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+window.onload = () => {
+  const table = document.getElementsByName("killdisplay")[0];
   table.addEventListener("mousedown", kills_mouse_down);
   table.addEventListener("touchdown", kills_mouse_down);
   table.addEventListener("mousemove", kills_update_include_state);
   table.addEventListener("touchmove", kills_update_include_state);
-  document.addEventListener("mouseup", window_mouse_up);
-  document.addEventListener("touchend", window_mouse_up);
-  document.addEventListener("drop", prevent_defaults, false);
+  document.addEventListener("mouseup",   window_mouse_up);
+  document.addEventListener("touchend",  window_mouse_up);
+  document.addEventListener("drop",      prevent_defaults, false);
   document.addEventListener("dragenter", prevent_defaults, false);
-  document.addEventListener("dragover", prevent_defaults, false);
+  document.addEventListener("dragover",  prevent_defaults, false);
   document.addEventListener("dragleave", prevent_defaults, false);
-  document.addEventListener("drop", window_drop);
+  document.addEventListener("drop",      window_drop);
 };
