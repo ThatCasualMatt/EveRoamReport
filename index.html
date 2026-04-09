@@ -29,6 +29,10 @@
                 <div class="header-status">
                     <span class="status-dot"></span>
                     <span class="status-text">CONNECTED TO ZKILLBOARD &amp; ESI</span>
+                    <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">
+                        <span class="theme-toggle-icon" id="theme-icon">☀️</span>
+                        <span id="theme-label">LIGHT</span>
+                    </button>
                 </div>
             </div>
         </header>
@@ -138,6 +142,34 @@
     </div>
 
     <script>
+        function toggleTheme() {
+            var html = document.documentElement;
+            var isLight = html.getAttribute("data-theme") === "light";
+            if (isLight) {
+                html.removeAttribute("data-theme");
+                document.getElementById("theme-icon").textContent = "☀️";
+                document.getElementById("theme-label").textContent = "LIGHT";
+                localStorage.setItem("roam-theme", "dark");
+            } else {
+                html.setAttribute("data-theme", "light");
+                document.getElementById("theme-icon").textContent = "🌑";
+                document.getElementById("theme-label").textContent = "DARK";
+                localStorage.setItem("roam-theme", "light");
+            }
+        }
+
+        // Restore saved theme preference on load
+        (function() {
+            if (localStorage.getItem("roam-theme") === "light") {
+                document.documentElement.setAttribute("data-theme", "light");
+                // Icons update after DOM ready
+                window.addEventListener("DOMContentLoaded", function() {
+                    document.getElementById("theme-icon").textContent = "🌑";
+                    document.getElementById("theme-label").textContent = "DARK";
+                });
+            }
+        })();
+
         function copyOutput() {
             var out = document.getElementsByName("output")[0];
             if (!out.value) return;

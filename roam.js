@@ -116,6 +116,12 @@ function get_date(str) {
   return date;
 }
 
+// Converts ESI ISO timestamp "2024-03-15T14:32:07Z" → "2024-03-15  14:32:07"
+function format_killmail_time(isoStr) {
+  if (!isoStr) return "";
+  return isoStr.slice(0, 10) + "  " + isoStr.slice(11, 19);
+}
+
 function get_kill_by_id(id, killList) {
   for (var i = 0; i < killList.length; ++i) {
     if (killList[i].killmail_id == id) return killList[i];
@@ -585,7 +591,7 @@ function process_kills() {
       "<a href=https://zkillboard.com/kill/" +
       kill.killmail_id +
       '/ target="_blank">' +
-      kill.killmail_time +
+      format_killmail_time(kill.killmail_time) +
       "</a>";
     kill.zkill_href = cell.children[0];
 
