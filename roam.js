@@ -42,7 +42,7 @@ window.partialKillData = {};
 // Request helpers
 // ---------------------------------------------------------------------------
 function make_request_params(kind, body) {
-  if (kind === "names_batch" || kind === "esi_ids" || kind === "esi_affiliations") {
+  if (kind === "names_batch" || kind === "esi_ids") {
     return {
       method: "POST",
       headers: { "Content-Type": "application/json", accept: "application/json" },
@@ -72,8 +72,6 @@ function get_url(kind, args) {
     return "https://esi.evetech.net/v1/universe/ids/?datasource=tranquility";
   if (kind === "esi_ids")
     return "https://esi.evetech.net/v3/universe/names/?datasource=tranquility";
-  if (kind === "esi_affiliations")
-    return "https://esi.evetech.net/v1/characters/affiliation/?datasource=tranquility";
   if (kind === "zkill_batch")
     // #11 — Fixed typo: querryType -> queryType
     return `https://zkillboard.com/api/${args.queryType}/${args.id}/pastSeconds/604800/page/${args.page}/`;
@@ -120,16 +118,6 @@ function update_progress(current, total) {
 // ---------------------------------------------------------------------------
 // Sort helpers
 // ---------------------------------------------------------------------------
-function affiliation_sort(a, b) {
-  // #8 — char_a, char_b were accidentally global
-  const char_a = window.characters[a];
-  const char_b = window.characters[b];
-  if (char_a.alliance === char_b.alliance) return char_a.corp - char_b.corp;
-  if (char_a.alliance === undefined) return -1;
-  if (char_b.alliance === undefined) return  1;
-  return char_a.alliance - char_b.alliance;
-}
-
 function kill_sort(a, b) {
   if (a.date > b.date) return  1;
   if (a.date === b.date) return 0;
@@ -220,6 +208,8 @@ function get_roam() {
   window.unsortedKills   = [];
   window.friendlies      = new Set();
   window.characters      = {};
+  window.knownTypes      = {};   // reset so stale ship/system names don't persist across runs
+  window.knownKillData   = {};   // reset so pagination state doesn't carry over
   window.partialKillData = {};
   window.unknownTypes    = [];
 
@@ -273,8 +263,10 @@ function get_roam() {
   console.log("Players involved:", window.finalNames);
 
   request_ids_for_names(window.finalNames, true)
-    .then(() => request_affiliations_for_unknown_characters())
-    // #6 — Query per characterID; avoids fetching entire corp/alliance history
+    // #6 — Query per characterID; avoids fetching entire corp/alliance history.
+    //       Affiliation fetch removed — corp/alliance grouping no longer used,
+    //       so fetching affiliations was pure wasted API calls, especially for
+    //       NPSI fleets with many different corps represented.
     .then(() => request_all_kills_by_character([...window.friendlies]))
     .then(() => request_full_kill_data(window.partialKillData))
     .then(() => request_names_for_ids(window.unknownTypes))
@@ -357,43 +349,6 @@ function request_names_for_ids_batch(IDs) {
         }
       }
       console.log("Got batch of names:", jsonData.length);
-    });
-}
-
-// ---------------------------------------------------------------------------
-// ESI: character affiliations (corp / alliance)
-// ---------------------------------------------------------------------------
-function request_affiliations_for_unknown_characters() {
-  // #8 — unknownCharacters and IDs were accidentally global
-  const unknownCharacters = [];
-  for (const key in window.characters) {
-    if (window.characters[key].corporation_id === undefined)
-      unknownCharacters.push(key);
-  }
-  // ESI affiliation endpoint requires integer IDs (Object.keys returns strings)
-  const IDs      = Array.from(new Set(unknownCharacters)).map(Number);
-  const requests = [];
-  for (let start = 0; start < IDs.length; start += ESI_BATCH_SIZE) {
-    requests.push(request_affiliations_for_char_ids_batch(IDs.slice(start, start + ESI_BATCH_SIZE)));
-  }
-  return Promise.all(requests);
-}
-
-function request_affiliations_for_char_ids_batch(IDs) {
-  const url        = get_url("esi_affiliations");
-  const url_params = make_request_params("esi_affiliations", IDs);
-
-  return fetch(new Request(url, url_params))
-    .then((response) => {
-      if (response.status !== 200)
-        throw new Error("ESI /characters/affiliation/ request failed (status " + response.status + ")");
-      return response.json();
-    })
-    .then((jsonData) => {
-      for (const entry of jsonData) {
-        window.characters[entry.character_id].corp     = entry.corporation_id;
-        window.characters[entry.character_id].alliance = entry.alliance_id;
-      }
     });
 }
 
@@ -614,9 +569,10 @@ function process_kills() {
     // #1 — Reads from knownTypes (resolved via ESI), replacing the data.js lookup
     const locCell = document.createElement("div");
     locCell.className = "kd";
-    locCell.appendChild(document.createTextNode(
-      window.knownTypes[kill.solar_system_id] || "sysId_" + kill.solar_system_id
-    ));
+    const systemName = (window.knownTypes && window.knownTypes[kill.solar_system_id])
+      ? window.knownTypes[kill.solar_system_id]
+      : "sysId_" + kill.solar_system_id;
+    locCell.appendChild(document.createTextNode(systemName));
     row.appendChild(locCell);
 
     // — ISK —
@@ -717,7 +673,9 @@ function get_forum_post() {
           systemIDs.push(kk.solar_system_id);
       }
       // #1 — System names now from knownTypes (ESI), not data.js
-      const regionNames = systemIDs.map((x) => window.knownTypes[x] || "sysId_" + x);
+      const regionNames = systemIDs.map((x) =>
+        (window.knownTypes && window.knownTypes[x]) ? window.knownTypes[x] : "sysId_" + x
+      );
       lines.push(template.killListSeparator(kill.killmail_time.slice(11, 19), regionNames));
       addSeparator = false;
     }
