@@ -114,6 +114,17 @@
                     <select name="template" id="template-select" style="display:none;">
                         <option value="discord">Discord</option>
                     </select>
+                    <div class="nitro-row">
+                        <span class="nitro-label">DISCORD PLAN</span>
+                        <div class="nitro-toggle-group">
+                            <span class="nitro-opt" id="nitro-opt-standard">Standard (2,000)</span>
+                            <label class="nitro-switch" title="Toggle Nitro character limit">
+                                <input type="checkbox" id="nitro-toggle">
+                                <span class="nitro-slider"></span>
+                            </label>
+                            <span class="nitro-opt" id="nitro-opt-nitro">Nitro (4,000)</span>
+                        </div>
+                    </div>
                     <button class="advance-button" onclick="get_forum_post()">
                         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                         GENERATE AAR TEMPLATE
@@ -168,6 +179,19 @@
                 });
             }
         })();
+
+        // Highlight the active Discord plan label when the toggle changes
+        document.addEventListener("DOMContentLoaded", function () {
+            const toggle   = document.getElementById("nitro-toggle");
+            const standard = document.getElementById("nitro-opt-standard");
+            const nitro    = document.getElementById("nitro-opt-nitro");
+            function updateLabels() {
+                standard.classList.toggle("nitro-opt-active", !toggle.checked);
+                nitro.classList.toggle("nitro-opt-active",    toggle.checked);
+            }
+            toggle.addEventListener("change", updateLabels);
+            updateLabels(); // set correct state on load
+        });
 
         function copyOutput() {
             var out = document.getElementsByName("output")[0];

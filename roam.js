@@ -698,7 +698,41 @@ function get_forum_post() {
   lines.push(template.statsFooter());
   lines.push(template.footer());
 
-  document.getElementsByName("output")[0].value = lines.join("\n");
+  // ---------------------------------------------------------------------------
+  // Insert Discord message-break markers
+  // Read the character limit from the Nitro toggle, then walk the lines array
+  // and insert a visible separator whenever adding the next line would push the
+  // running count over the limit. Never splits mid-line — messages may be
+  // slightly under the limit rather than over.
+  // ---------------------------------------------------------------------------
+  const nitro      = document.getElementById("nitro-toggle").checked;
+  const charLimit  = nitro ? 4000 : 2000;
+  const BREAK_LINE = "─────────────── ✂ MESSAGE BREAK ───────────────";
+
+  const output  = [];
+  let msgLen    = 0;
+  let msgIsEmpty = true; // true at the start of each new message
+
+  for (const line of lines) {
+    // Cost of adding this line: its characters plus the \n separator before it
+    // (no separator before the very first line in each message)
+    const lineCost = line.length + (msgIsEmpty ? 0 : 1);
+
+    if (!msgIsEmpty && msgLen + lineCost > charLimit) {
+      // Adding this line would exceed the limit — insert break first.
+      // Note: if a single line is itself longer than charLimit it will still be
+      // placed in its own message — we never split mid-line.
+      output.push(BREAK_LINE);
+      msgLen    = BREAK_LINE.length + 1; // break line costs its length + its \n
+      msgIsEmpty = true;
+    }
+
+    output.push(line);
+    msgLen    += line.length + (msgIsEmpty ? 0 : 1);
+    msgIsEmpty = false;
+  }
+
+  document.getElementsByName("output")[0].value = output.join("\n");
 }
 
 // ---------------------------------------------------------------------------
