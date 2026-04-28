@@ -129,14 +129,9 @@
                         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                         GENERATE AAR TEMPLATE
                     </button>
-                    <div class="output-label">
-                        <span>OUTPUT</span>
-                        <button class="copy-btn" onclick="copyOutput()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            COPY
-                        </button>
-                    </div>
-                    <textarea class="output-aar" name="output" placeholder="Generated AAR will appear here…" readonly></textarea>
+                    <div id="output-messages"></div>
+                    <!-- Hidden textarea kept for roam.js compatibility — value is set then immediately read and rendered -->
+                    <textarea class="output-aar" name="output" style="display:none;"></textarea>
                 </div>
             </section>
 
@@ -193,15 +188,52 @@
             updateLabels(); // set correct state on load
         });
 
-        function copyOutput() {
-            var out = document.getElementsByName("output")[0];
-            if (!out.value) return;
-            navigator.clipboard.writeText(out.value).then(() => {
-                var btn = document.querySelector(".copy-btn");
-                btn.textContent = "COPIED!";
-                setTimeout(() => {
-                    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> COPY';
-                }, 2000);
+        const BREAK_LINE = "─────────────── ✂ MESSAGE BREAK ───────────────";
+        window.BREAK_LINE = BREAK_LINE;
+
+        function renderMessages() {
+            const raw = document.getElementsByName("output")[0].value;
+            if (!raw) return;
+
+            const container = document.getElementById("output-messages");
+            container.innerHTML = "";
+
+            const messages = raw.split("\n" + BREAK_LINE + "\n");
+
+            messages.forEach((msg, i) => {
+                const wrap = document.createElement("div");
+                wrap.className = "message-block";
+
+                const label = document.createElement("div");
+                label.className = "output-label";
+
+                const span = document.createElement("span");
+                span.textContent = messages.length > 1
+                    ? "MESSAGE " + (i + 1) + " OF " + messages.length + "  ·  " + msg.length + " CHARS"
+                    : "OUTPUT  ·  " + msg.length + " CHARS";
+                label.appendChild(span);
+
+                const btn = document.createElement("button");
+                btn.className = "copy-btn";
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> COPY';
+                btn.addEventListener("click", () => {
+                    navigator.clipboard.writeText(msg).then(() => {
+                        btn.textContent = "COPIED!";
+                        setTimeout(() => {
+                            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> COPY';
+                        }, 2000);
+                    });
+                });
+                label.appendChild(btn);
+
+                const ta = document.createElement("textarea");
+                ta.className = "output-aar";
+                ta.readOnly = true;
+                ta.value = msg;
+
+                wrap.appendChild(label);
+                wrap.appendChild(ta);
+                container.appendChild(wrap);
             });
         }
     </script>

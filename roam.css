@@ -551,6 +551,15 @@ a:hover { text-decoration: underline; }
     line-height: 1;
 }
 
+/* ── Output message blocks ──────────────────────────────────── */
+.message-block {
+    margin-bottom: 16px;
+}
+
+.message-block:last-child {
+    margin-bottom: 0;
+}
+
 /* ── Nitro toggle ───────────────────────────────────────────── */
 .nitro-row {
     display: flex;

@@ -641,6 +641,7 @@ function get_forum_post() {
 
   const lines = [];
   lines.push(template.header());
+  lines.push("");                                          // blank line after header
   lines.push(template.membersHeader(window.finalNames.length));
 
   for (const char of sortedCharacters) {
@@ -651,6 +652,7 @@ function get_forum_post() {
   }
 
   lines.push(template.membersFooter());
+  lines.push("");                                          // blank line before kills section
   lines.push(template.killsHeader());
 
   let iskGain     = 0;
@@ -672,11 +674,13 @@ function get_forum_post() {
         if (kk.is_included && systemIDs.indexOf(kk.solar_system_id) === -1)
           systemIDs.push(kk.solar_system_id);
       }
-      // #1 — System names now from knownTypes (ESI), not data.js
       const regionNames = systemIDs.map((x) =>
         (window.knownTypes && window.knownTypes[x]) ? window.knownTypes[x] : "sysId_" + x
       );
-      lines.push(template.killListSeparator(kill.killmail_time.slice(11, 19), regionNames));
+      lines.push("");                                      // blank line before each fight block
+      // killListSeparator may contain embedded \n — split so each is one entry
+      const sepLines = template.killListSeparator(kill.killmail_time.slice(11, 19), regionNames).split("\n");
+      for (const sl of sepLines) lines.push(sl);
       addSeparator = false;
     }
 
@@ -693,9 +697,12 @@ function get_forum_post() {
   }
 
   lines.push(template.killsFooter());
+  lines.push("");                                          // blank line before stats
   lines.push(template.statsHeader());
-  lines.push(template.stats(iskGain, iskLoss));
+  // stats() returns multiple lines joined with \n — split so each is one entry
+  for (const statLine of template.stats(iskGain, iskLoss).split("\n")) lines.push(statLine);
   lines.push(template.statsFooter());
+  lines.push("");                                          // blank line before footer
   lines.push(template.footer());
 
   // ---------------------------------------------------------------------------
@@ -707,7 +714,9 @@ function get_forum_post() {
   // ---------------------------------------------------------------------------
   const nitro      = document.getElementById("nitro-toggle").checked;
   const charLimit  = nitro ? 4000 : 2000;
-  const BREAK_LINE = "─────────────── ✂ MESSAGE BREAK ───────────────";
+  // BREAK_LINE is defined in index.html as window.BREAK_LINE so both files
+  // share exactly the same string — the renderer splits on it too.
+  const BREAK_LINE = window.BREAK_LINE;
 
   const output  = [];
   let msgLen    = 0;
@@ -733,6 +742,9 @@ function get_forum_post() {
   }
 
   document.getElementsByName("output")[0].value = output.join("\n");
+
+  // Render each message as a separate block with its own copy button
+  if (typeof renderMessages === "function") renderMessages();
 }
 
 // ---------------------------------------------------------------------------
